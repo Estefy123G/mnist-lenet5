@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reconocedor de dígitos MNIST · LeNet-5</title>
+<style>
+  :root { --azul:#1f4e79; --azul2:#2e75b6; --gris:#f3f5f8; --borde:#d6dce5; --texto:#1d2430; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--gris); color: var(--texto); }
+  header { background: var(--azul); color:#fff; padding: 22px 16px; text-align:center; }
+  header h1 { margin:0; font-size: 1.6rem; }
+  header p { margin:6px 0 0; opacity:.85; font-size:.95rem; }
+  main { max-width: 980px; margin: 24px auto; padding: 0 16px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card { background:#fff; border:1px solid var(--borde); border-radius: 12px; padding: 20px; }
+  .card h2 { margin:0 0 14px; font-size:1.1rem; color: var(--azul); }
+  #zona { border: 2px dashed var(--azul2); border-radius: 10px; padding: 26px 12px; text-align:center; cursor:pointer; transition: background .2s; }
+  #zona.encima { background:#e8f1fa; }
+  #zona small { color:#5b6575; }
+  button { background: var(--azul2); color:#fff; border:none; border-radius:8px; padding: 11px 18px; font-size: 1rem; cursor:pointer; width:100%; margin-top: 14px; }
+  button:disabled { background:#9fb3c8; cursor:not-allowed; }
+  .imgs { display:flex; gap:16px; justify-content:center; margin-top: 16px; flex-wrap: wrap; }
+  .imgs figure { margin:0; text-align:center; }
+  .imgs img { width: 168px; height:168px; object-fit: contain; image-rendering: pixelated; border:1px solid var(--borde); border-radius:6px; background:#000; }
+  .imgs figcaption { font-size:.8rem; color:#5b6575; margin-top:4px; }
+  #resultado { text-align:center; }
+  #digito { font-size: 6rem; font-weight: 700; color: var(--azul); line-height: 1; margin: 6px 0; }
+  #confianza { color:#5b6575; margin-bottom: 14px; }
+  .barra { display:flex; align-items:center; gap:8px; margin: 4px 0; font-size:.85rem; }
+  .barra span:first-child { width: 14px; font-weight:600; }
+  .pista { flex:1; background:#e9edf2; border-radius: 4px; height: 14px; overflow:hidden; }
+  .relleno { height:100%; background: var(--azul2); width:0; transition: width .4s; }
+  .relleno.max { background:#c55a11; }
+  .barra span:last-child { width: 52px; text-align:right; color:#5b6575; }
+  .vacio { color:#8a94a3; padding: 40px 0; }
+  .error { color:#b00020; margin-top:10px; }
+  .sel { display:block; margin-top:16px; font-size:.9rem; }
+  .sel select { margin-left:6px; padding:6px; border-radius:6px; border:1px solid var(--borde); font-size:.9rem; }
+  .nota { font-size:.8rem; color:#5b6575; margin-top: 10px; }
+  footer { text-align:center; color:#7a8494; font-size:.8rem; padding: 10px 0 24px; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Reconocedor de dígitos manuscritos (0-9)</h1>
+  <p>Red neuronal convolucional LeNet-5 entrenada con MNIST · Big Data — UTN</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. Cargar imagen (28 × 28)</h2>
+    <div id="zona">
+      <strong>Haz clic o arrastra una imagen aquí</strong><br>
+      <small>PNG, JPG o BMP · idealmente 28×28 px en escala de grises</small>
+      <input type="file" id="archivo" accept="image/*" hidden>
+    </div>
+    <div class="imgs">
+      <figure><img id="original" alt="Imagen cargada"><figcaption id="capOriginal">Imagen cargada</figcaption></figure>
+      <figure><img id="procesada" alt="Entrada al modelo"><figcaption>Entrada al modelo (28×28)</figcaption></figure>
+    </div>
+    <label class="sel">Modelo:
+      <select id="modelo">
+        <option value="lenet5" selected>LeNet-5 (recomendado · 44 K parámetros)</option>
+        <option value="cnn_keras">CNN Keras (1.2 M parámetros)</option>
+      </select>
+    </label>
+    <button id="btn" disabled>Predecir dígito</button>
+    <div id="error" class="error"></div>
+    <p class="nota">Si la imagen no es de 28×28 se redimensiona; si tiene fondo claro se invierte (MNIST usa fondo negro y trazo blanco).</p>
+  </section>
+
+  <section class="card" id="resultado">
+    <h2>2. Predicción</h2>
+    <div id="vacio" class="vacio">Carga una imagen y presiona «Predecir dígito».</div>
+    <div id="salida" hidden>
+      <div id="digito">–</div>
+      <div id="confianza"></div>
+      <div id="barras"></div>
+    </div>
+  </section>
+</main>
+<footer>Modelo desplegado: LeNet-5 (Conv 6@5×5 → Pool → Conv 16@5×5 → Pool → FC120 → FC84 → Softmax10) · servido con ONNX Runtime</footer>
+
+<script>
+const zona = document.getElementById('zona'), input = document.getElementById('archivo');
+const btn = document.getElementById('btn'), err = document.getElementById('error');
+const imgO = document.getElementById('original'), imgP = document.getElementById('procesada');
+let archivo = null;
+
+zona.onclick = () => input.click();
+input.onchange = e => cargar(e.target.files[0]);
+['dragover','dragenter'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('encima'); }));
+['dragleave','drop'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove('encima'); }));
+zona.addEventListener('drop', e => cargar(e.dataTransfer.files[0]));
+
+function cargar(f) {
+  if (!f) return;
+  if (!f.type.startsWith('image/')) { err.textContent = 'Selecciona un archivo de imagen.'; return; }
+  archivo = f; err.textContent = '';
+  const r = new FileReader();
+  r.onload = ev => {
+    imgO.src = ev.target.result;
+    const tmp = new Image();
+    tmp.onload = () => document.getElementById('capOriginal').textContent = `Imagen cargada (${tmp.width}×${tmp.height})`;
+    tmp.src = ev.target.result;
+  };
+  r.readAsDataURL(f);
+  imgP.removeAttribute('src');
+  btn.disabled = false;
+}
+
+btn.onclick = async () => {
+  if (!archivo) return;
+  btn.disabled = true; btn.textContent = 'Prediciendo...'; err.textContent = '';
+  const fd = new FormData(); fd.append('imagen', archivo);
+  fd.append('modelo', document.getElementById('modelo').value);
+  try {
+    const res = await fetch('/predecir', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Error en el servidor');
+    imgP.src = d.imagen_28;
+    document.getElementById('vacio').hidden = true;
+    document.getElementById('salida').hidden = false;
+    document.getElementById('digito').textContent = d.digito;
+    document.getElementById('confianza').textContent =
+      `Confianza: ${d.confianza}% · ${d.modelo} · ${d.tiempo_ms} ms` + (d.invertida ? ' · (imagen invertida)' : '');
+    document.getElementById('barras').innerHTML = d.probabilidades.map((p, i) => `
+      <div class="barra"><span>${i}</span>
+        <div class="pista"><div class="relleno ${i === d.digito ? 'max' : ''}" style="width:${p}%"></div></div>
+        <span>${p.toFixed(2)}%</span></div>`).join('');
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Predecir dígito';
+  }
+};
+</script>
+</body>
+</html>
