@@ -58,7 +58,8 @@ def a_base64(arr: np.ndarray, escala: int = 10) -> str:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    modelos = [(k, MODELOS[k][0]) for k in MODELOS if k in SESIONES]
+    return render_template("index.html", modelos=modelos, por_defecto=MODELO_POR_DEFECTO)
 
 
 @app.route("/predecir", methods=["POST"])
