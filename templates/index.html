@@ -21,7 +21,12 @@
   button:disabled { background:#9fb3c8; cursor:not-allowed; }
   .imgs { display:flex; gap:16px; justify-content:center; margin-top: 16px; flex-wrap: wrap; }
   .imgs figure { margin:0; text-align:center; }
-  .imgs img { width: 168px; height:168px; object-fit: contain; image-rendering: pixelated; border:1px solid var(--borde); border-radius:6px; background:#000; }
+  .marco { width:168px; height:168px; border:1px dashed var(--borde); border-radius:6px; background:#f8fafc;
+           display:flex; align-items:center; justify-content:center; color:#9aa4b2; font-size:.8rem; overflow:hidden; }
+  .marco.lleno { border-style:solid; background:#000; }
+  .marco img { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; display:none; }
+  .marco.lleno img { display:block; }
+  .marco.lleno span { display:none; }
   .imgs figcaption { font-size:.8rem; color:#5b6575; margin-top:4px; }
   #resultado { text-align:center; }
   #digito { font-size: 6rem; font-weight: 700; color: var(--azul); line-height: 1; margin: 6px 0; }
@@ -56,13 +61,14 @@
       <input type="file" id="archivo" accept="image/*" hidden>
     </div>
     <div class="imgs">
-      <figure><img id="original" alt="Imagen cargada"><figcaption id="capOriginal">Imagen cargada</figcaption></figure>
-      <figure><img id="procesada" alt="Entrada al modelo"><figcaption>Entrada al modelo (28×28)</figcaption></figure>
+      <figure><div class="marco" id="marcoO"><span>Sin imagen</span><img id="original" alt=""></div><figcaption id="capOriginal">Imagen cargada</figcaption></figure>
+      <figure><div class="marco" id="marcoP"><span>Pendiente</span><img id="procesada" alt=""></div><figcaption>Entrada al modelo (28×28)</figcaption></figure>
     </div>
     <label class="sel">Modelo:
       <select id="modelo">
-        <option value="lenet5" selected>LeNet-5 (recomendado · 44 K parámetros)</option>
-        <option value="cnn_keras">CNN Keras (1.2 M parámetros)</option>
+        {% for clave, nombre in modelos %}
+        <option value="{{ clave }}" {% if clave == por_defecto %}selected{% endif %}>{{ nombre }}{% if clave == 'lenet5' %} (recomendado · 44 K parámetros){% else %} (1.2 M parámetros){% endif %}</option>
+        {% endfor %}
       </select>
     </label>
     <button id="btn" disabled>Predecir dígito</button>
@@ -101,12 +107,14 @@ function cargar(f) {
   const r = new FileReader();
   r.onload = ev => {
     imgO.src = ev.target.result;
+    document.getElementById('marcoO').classList.add('lleno');
     const tmp = new Image();
     tmp.onload = () => document.getElementById('capOriginal').textContent = `Imagen cargada (${tmp.width}×${tmp.height})`;
     tmp.src = ev.target.result;
   };
   r.readAsDataURL(f);
   imgP.removeAttribute('src');
+  document.getElementById('marcoP').classList.remove('lleno');
   btn.disabled = false;
 }
 
@@ -120,6 +128,7 @@ btn.onclick = async () => {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || 'Error en el servidor');
     imgP.src = d.imagen_28;
+    document.getElementById('marcoP').classList.add('lleno');
     document.getElementById('vacio').hidden = true;
     document.getElementById('salida').hidden = false;
     document.getElementById('digito').textContent = d.digito;
